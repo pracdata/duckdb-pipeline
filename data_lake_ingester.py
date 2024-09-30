@@ -86,8 +86,6 @@ class DataLakeIngester:
       credentials["endpoint_url"] = self.config.get('aws', 's3_endpoint_url')
     return credentials
   
-
-
   def _generate_sink_key(self, process_date: datetime, filename, sink_key_path) -> str:
     """
     Generate the S3 sink key for the sink file.

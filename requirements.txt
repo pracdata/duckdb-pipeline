@@ -1,4 +1,5 @@
 duckdb==1.1.0
 boto3==1.35.20
 pandas==2.2.3
+requests
 pytest

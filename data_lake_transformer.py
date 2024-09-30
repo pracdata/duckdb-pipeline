@@ -28,36 +28,41 @@ class DataLakeTransformer:
     con.load_extension("httpfs")
     return con
 
-  def serialise_raw_data(self, source_path, sink_bucket, sink_key_path) -> None:
+  def serialise_raw_data(self, source_bucket, source_key_path, sink_bucket, sink_key_path, process_date: datetime) -> None:
     """
     Serialize and clean raw data, then export to parquet format on next zone.
 
-    :param source_path: Full Path to the source data.
+    :param source_bucket: souce file S3 bucket.
+    :param source_key_path: Partial Key path within the S3 bucket.
     :param sink_bucket: S3 bucket for the output.
-    :param sink_key_path: Key path within the S3 bucket.
+    :param sink_key_path: Partial Key path within the S3 bucket.
+    :param process_date: the process date corresponding to the hourly partition to serialise
     """
     try:
+      source_path = self._raw_hourly_file_path(source_bucket, source_key_path, process_date)
       gharchive_raw_result = self.register_raw_gharchive(source_path)
       gharchive_clean_result = self.clean_raw_gharchive(gharchive_raw_result.alias)
-      sink_path = self._create_sink_path('clean', sink_bucket, sink_key_path)
+      sink_path = self._create_sink_path('clean', sink_bucket, sink_key_path, process_date, True)
       logging.info(f"DuckDB - serialise and export cleaned data to {sink_path}")
       gharchive_clean_result.write_parquet(sink_path)
     except Exception as e:
       logging.error(f"Error in serialise_raw_data: {str(e)}")
       raise
   
-  def aggregate_silver_data(self, source_path, sink_bucket, sink_key_path) -> None:
+  def aggregate_silver_data(self, source_bucket, source_key_path, sink_bucket, sink_key_path, process_date: datetime) -> None:
     """
     Aggregate raw data and export to parquet format.
 
-    :param source_path: Path to the source data.
+    :param source_bucket: souce file S3 bucket.
     :param sink_bucket: S3 bucket for the output.
     :param sink_key_path: Key path within the S3 bucket.
+    :param process_date: the process date corresponding to the daily partition to aggregate
     """
     try:
-      logging.info(f"DuckDB - aggregate raw data in {source_path}")
+      source_path = self._silver_daily_file_path(source_bucket, source_key_path, process_date)
+      logging.info(f"DuckDB - aggregate silver data in {source_path}")
       gharchive_agg_result = self.aggregate_raw_gharchive(source_path)
-      sink_path = self._create_sink_path('agg', sink_bucket, sink_key_path)
+      sink_path = self._create_sink_path('agg', sink_bucket, sink_key_path, process_date)
       logging.info(f"DuckDB - export aggregated data to {sink_path}")
       gharchive_agg_result.write_parquet(sink_path)   
     except Exception as e:
@@ -121,18 +126,19 @@ class DataLakeTransformer:
     self.con.execute(f"CREATE OR REPLACE TABLE gharchive_agg AS FROM ({query})")
     return self.con.table("gharchive_agg")
 
-  def _create_sink_path(self, data_type, sink_bucket, sink_key_path) -> str:
+  def _create_sink_path(self, data_type, sink_bucket, sink_key_path, process_date: datetime, has_hourly_partition: bool = False) -> str:
     """
     Create the full S3 path for the sink file.
 
-    :param source_path: Path to the source data.
     :param sink_bucket: S3 bucket for the output.
     :param sink_key_path: Key path within the S3 bucket.
     :param data_type: Type of data being processed.
+    :param process_date: the process date corresponding to the hourly partition
     :return: Full S3 path for the sink file.
     """
+    partitions_path = self._partition_path(process_date,has_hourly_partition)
     sink_filename = self._generate_export_filename(data_type)
-    return f"s3://{sink_bucket}/{sink_key_path}/{sink_filename}"
+    return f"s3://{sink_bucket}/{sink_key_path}/{partitions_path}/{sink_filename}"
   
   def _extract_filename_from_s3_path(self, s3_path, remove_extension=False) -> str:
     """
@@ -155,7 +161,24 @@ class DataLakeTransformer:
       return filename
     else:
       return full_filename
+  
+  def _raw_hourly_file_path(self, source_bucket, source_key_path, process_date: datetime) -> str:
+    partitions_path = self._partition_path(process_date,True)
+    s3_key = f"s3://{source_bucket}/{source_key_path}/{partitions_path}/*"   
+    return s3_key 
 
+  def _silver_daily_file_path(self, source_bucket, source_key_path, process_date: datetime) -> str:
+    partitions_path = self._partition_path(process_date,False)
+    s3_key = f"s3://{source_bucket}/{source_key_path}/{partitions_path}/*/*.parquet"   
+    return s3_key 
+  
+  def _partition_path(self,process_date: datetime, has_hourly_partition: bool = False):
+    if has_hourly_partition:
+        partition_path = process_date.strftime("%Y-%m-%d/%H")
+    else:
+        partition_path = process_date.strftime("%Y-%m-%d")
+    return partition_path
+  
   def _generate_export_filename(self, data_type, file_extension='parquet', partition_key=None) -> str:
     """
     Generate a unique filename for the exported data file.
