@@ -1,4 +1,5 @@
 import duckdb
+import configparser
 from datetime import datetime
 import logging
 import os
@@ -14,7 +15,11 @@ class DataLakeTransformer:
     # set the logging level and format
     logging.basicConfig(level=logging.INFO, 
                         format='%(asctime)s - %(levelname)s - %(message)s')
+    self.config = self._load_config()
+    
     self.con = self.duckdb_connection()
+    self._set_duckdb_s3_credentials()
+    logging.info("DuckDB connection initiated")
   
   def duckdb_connection(self) -> duckdb.DuckDBPyConnection:
     """Create and configure a DuckDB connection."""
@@ -165,7 +170,28 @@ class DataLakeTransformer:
     if partition_key:
       filename_parts.insert(2, partition_key)
     return "_".join(filename_parts) + "." + file_extension
-       
+  
+  def _load_config(self):
+    """
+    Load configuration from the given path.
+    """
+    config = configparser.ConfigParser()
+    config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
+    config.read(config_path)
+    return config
+  
+  def _set_duckdb_s3_credentials(self) -> None:
+    """ Read S3 credentials and endpoint from config file """
+    aws_access_key_id = self.config.get('aws', 's3_access_key_id')
+    aws_secret_access_key = self.config.get('aws', 's3_secret_access_key')
+    s3_endpoint = self.config.get('aws', 's3_endpoint_url', fallback=None)
+    # Set S3 credentials
+    self.con.execute(f"SET s3_access_key_id='{aws_access_key_id}'")
+    self.con.execute(f"SET s3_secret_access_key='{aws_secret_access_key}'")
+    # Set S3 endpoint if provided
+    if s3_endpoint:
+      self.con.execute(f"SET s3_endpoint='{s3_endpoint}'")
+
   def __del__(self):
     """Ensure the DuckDB connection is closed when the object is destroyed."""
     if hasattr(self, 'con'):
