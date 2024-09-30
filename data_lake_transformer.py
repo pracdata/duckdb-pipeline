@@ -43,7 +43,7 @@ class DataLakeTransformer:
       logging.info(f"DuckDB - serialise and export cleaned data to {sink_path}")
       gharchive_clean_result.write_parquet(sink_path)
     except Exception as e:
-      self.logger.error(f"Error in serialise_raw_data: {str(e)}")
+      logging.error(f"Error in serialise_raw_data: {str(e)}")
       raise
   
   def aggregate_silver_data(self, source_path, sink_bucket, sink_key_path) -> None:
@@ -61,10 +61,10 @@ class DataLakeTransformer:
       logging.info(f"DuckDB - export aggregated data to {sink_path}")
       gharchive_agg_result.write_parquet(sink_path)   
     except Exception as e:
-      self.logger.error(f"Error in aggregate_silver_data: {str(e)}")
+      logging.error(f"Error in aggregate_silver_data: {str(e)}")
       raise
 
-  def register_raw_gharchive(self, source_path) -> duckdb.DuckDBResult:
+  def register_raw_gharchive(self, source_path) -> duckdb.DuckDBPyRelation:
     """
     Create a an in-memory table from raw GHArchive source data.
 
@@ -76,7 +76,7 @@ class DataLakeTransformer:
                       AS FROM read_json_auto('{source_path}', ignore_errors=true)")
     return self.con.table("gharchive_raw")
   
-  def clean_raw_gharchive(self,raw_dataset) -> duckdb.DuckDBResult:
+  def clean_raw_gharchive(self,raw_dataset) -> duckdb.DuckDBPyRelation:
     """
     Clean the raw GHArchive data and only selected attributed we are interest in.
 
@@ -100,7 +100,7 @@ class DataLakeTransformer:
     self.con.execute(f"CREATE OR REPLACE TABLE gharchive_clean AS FROM ({query})")
     return self.con.table("gharchive_clean")
 
-  def aggregate_raw_gharchive(self, raw_dataset) -> duckdb.DuckDBResult:
+  def aggregate_raw_gharchive(self, raw_dataset) -> duckdb.DuckDBPyRelation:
     """
     Aggregate the raw GHArchive data.
 
@@ -184,7 +184,7 @@ class DataLakeTransformer:
     """ Read S3 credentials and endpoint from config file """
     aws_access_key_id = self.config.get('aws', 's3_access_key_id')
     aws_secret_access_key = self.config.get('aws', 's3_secret_access_key')
-    s3_endpoint = self.config.get('aws', 's3_endpoint_url', fallback=None)
+    s3_endpoint = self.config.get('aws', 's3_endpoint', fallback=None)
     # Set S3 credentials
     self.con.execute(f"SET s3_access_key_id='{aws_access_key_id}'")
     self.con.execute(f"SET s3_secret_access_key='{aws_secret_access_key}'")
