@@ -13,6 +13,7 @@ class DataLakeTransformer:
   def __init__(self,dataset_base_path):
     """ 
     Initialise the DataLakeTransformer. 
+    
     :param dataset_base_path: The key prefix to use for this dataset
     """
     # set the logging level and format
@@ -34,6 +35,7 @@ class DataLakeTransformer:
   def serialise_raw_data(self, process_date: datetime) -> None:
     """
     Serialize and clean raw data, then export to parquet format on next zone.
+    
     :param process_date: the process date corresponding to the hourly partition to serialise
     """
     try:
@@ -52,7 +54,7 @@ class DataLakeTransformer:
   def aggregate_silver_data(self, process_date: datetime) -> None:
     """
     Aggregate raw data and export to parquet format.
- 
+    
     :param process_date: the process date corresponding to the daily partition to aggregate
     """
     try:
@@ -70,8 +72,8 @@ class DataLakeTransformer:
 
   def register_raw_gharchive(self, source_path) -> duckdb.DuckDBPyRelation:
     """
-    Create a an in-memory table from raw GHArchive source data.
-
+    Create a an in-memory table from raw GHArchive source data
+    
     :param source_path: Full Path to the source data on lake.
     :return: DuckDB result object representing the raw table.
     """
@@ -83,7 +85,7 @@ class DataLakeTransformer:
   def clean_raw_gharchive(self,raw_dataset) -> duckdb.DuckDBPyRelation:
     """
     Clean the raw GHArchive data and only selected attributed we are interest in.
-
+    
     :param raw_dataset: Name of the DuckDB raw dataset table.
     :return: DuckDB result object representing the cleaned table.
     """
@@ -107,7 +109,7 @@ class DataLakeTransformer:
   def aggregate_raw_gharchive(self, raw_dataset) -> duckdb.DuckDBPyRelation:
     """
     Aggregate the raw GHArchive data.
-
+    
     :param raw_dataset: Full Path to the raw dataset on data lake.
     :return: DuckDB result object representing the aggregated table.
     """
@@ -128,7 +130,7 @@ class DataLakeTransformer:
   def _create_sink_path(self, data_type, sink_bucket, sink_base_path, process_date: datetime, has_hourly_partition: bool = False) -> str:
     """
     Create the full S3 path for the sink file.
-
+    
     :param sink_bucket: S3 bucket for the output.
     :param sink_base_path: Key path within the S3 bucket.
     :param data_type: Type of data being processed.
@@ -136,13 +138,13 @@ class DataLakeTransformer:
     :return: Full S3 path for the sink file.
     """
     partitions_path = self._partition_path(process_date,has_hourly_partition)
-    sink_filename = self._generate_export_filename(data_type)
+    sink_filename = self._generate_export_filename(data_type,process_date,has_hourly_partition)
     return f"s3://{sink_bucket}/{sink_base_path}/{partitions_path}/{sink_filename}"
   
   def _extract_filename_from_s3_path(self, s3_path, remove_extension=False) -> str:
     """
     Extract filename from S3 path, optionally removing the extension.
-
+    
     :param s3_path: S3 path to extract filename from.
     :param remove_extension: Whether to remove the file extension.
     :return: Extracted filename.
@@ -162,54 +164,66 @@ class DataLakeTransformer:
       return full_filename
   
   def _raw_hourly_file_path(self, source_bucket, source_base_path, process_date: datetime) -> str:
+    """Generate the S3 path for hourly silver exported files."""
     partitions_path = self._partition_path(process_date,True)
     s3_key = f"s3://{source_bucket}/{source_base_path}/{partitions_path}/*"   
     return s3_key 
 
   def _silver_daily_file_path(self, source_bucket, source_base_path, process_date: datetime) -> str:
+    """Get the S3 path for silver files on the day level partition."""
     partitions_path = self._partition_path(process_date,False)
     s3_key = f"s3://{source_bucket}/{source_base_path}/{partitions_path}/*/*.parquet"   
     return s3_key 
   
   def _partition_path(self,process_date: datetime, has_hourly_partition: bool = False):
+    """Generate the partition path based on the process date."""
     if has_hourly_partition:
         partition_path = process_date.strftime("%Y-%m-%d/%H")
     else:
         partition_path = process_date.strftime("%Y-%m-%d")
     return partition_path
   
-  def _generate_export_filename(self, data_type, file_extension='parquet', partition_key=None) -> str:
-    """
-    Generate a unique filename for the exported data file.
+  def _generate_export_filename(self, data_type, process_date: datetime, has_hourly_partition: bool = False, file_extension='parquet'):
+    """Generate a filename for the exported data file"""
+    if has_hourly_partition:
+        timestamp = process_date.strftime("%Y%m%d_%H")
+    else:
+        timestamp = process_date.strftime("%Y%m%d")
+    return f"{data_type}_{timestamp}.{file_extension}"
+   
+  # def _generate_export_filename(self, data_type, file_extension='parquet', partition_key=None) -> str:
+  #   """
+  #   Generate a unique filename for the exported data file.
 
-    :param base_name: Base name for the file.
-    :param data_type: Type of data being processed.
-    :return: Generated filename.
-    """
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    unique_id = str(uuid.uuid4())[:8]  # Use first 8 characters of a UUID
-    filename_parts = [data_type, timestamp, unique_id]
-    if partition_key:
-      filename_parts.insert(2, partition_key)
-    return "_".join(filename_parts) + "." + file_extension
+  #   :param base_name: Base name for the file.
+  #   :param data_type: Type of data being processed.
+  #   :return: Generated filename.
+  #   """
+  #   timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+  #   unique_id = str(uuid.uuid4())[:8]  # Use first 8 characters of a UUID
+  #   filename_parts = [data_type, timestamp, unique_id]
+  #   if partition_key:
+  #     filename_parts.insert(2, partition_key)
+  #   return "_".join(filename_parts) + "." + file_extension
   
   def _load_config(self):
-    """
-    Load configuration from the given path.
-    """
+    """ Load configuration from the given path """
     config = configparser.ConfigParser()
     config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
     config.read(config_path)
     return config
 
   def _datalake_bucket_name(self) -> dict:
-    """ Get S3 bucket names from the config file"""
-    buckets = {}
-    buckets['bronze'] = self.config.get('datalake', 'bronze_bucket')
-    buckets['silver'] = self.config.get('datalake', 'silver_bucket')
-    buckets['gold'] = self.config.get('datalake', 'gold_bucket')
-    return buckets
-    
+    """ Get S3 bucket names from the config file """
+    try:
+      buckets = {}
+      buckets['bronze'] = self.config.get('datalake', 'bronze_bucket')
+      buckets['silver'] = self.config.get('datalake', 'silver_bucket')
+      buckets['gold'] = self.config.get('datalake', 'gold_bucket')
+      return buckets
+    except Exception as e:
+      logging.error(f"An unexpected error occurred reading bucket names from config.ini file: {e}")
+          
   def _set_duckdb_s3_credentials(self) -> None:
     """ Read S3 credentials and endpoint from config file """
     aws_access_key_id = self.config.get('aws', 's3_access_key_id')

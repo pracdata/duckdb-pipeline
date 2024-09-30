@@ -94,12 +94,14 @@ class DataLakeIngester:
   
   def _bronze_bucket_name(self) -> str:
     """ Get S3 bronze bucket name from the config file"""
-    return self.config.get('datalake', 'bronze_bucket')
+    try:
+      return self.config.get('datalake', 'bronze_bucket')
+    except Exception as e:
+      logging.error(f"An unexpected error occurred reading bucket name from config.ini file: {e}")
   
   def _generate_sink_key(self, process_date: datetime, filename, sink_base_path) -> str:
     """
     Generate the S3 sink key for the sink file.
-    
     :param process_date: the process date for the current batch.
     :param filename: source filename.
     :param sink_base_path: Key path within the S3 bucket.

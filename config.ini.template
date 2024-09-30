@@ -3,3 +3,8 @@ s3_access_key_id = your_access_key_here
 s3_secret_access_key = your_secret_key_here
 s3_region_name = your_region_name_here
 s3_endpoint_url = your_custom_endpoint_url_here
+
+[datalake]
+bronze_bucket = you_bronze_zone_bucket
+silver_bucket = you_silver_zone_bucket
+gold_bucket = you_gold_zone_bucket
