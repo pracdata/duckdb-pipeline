@@ -14,15 +14,16 @@ class DataLakeIngester:
                         format='%(asctime)s - %(levelname)s - %(message)s')
     self.config = self._load_config()
   
-  def ingest_hourly_gharchive(self, s3_bucket, s3_path, process_date):
+  def ingest_hourly_gharchive(self, s3_bucket, s3_key_path, process_date: datetime):
     """
     Ingest hourly data from GHArchive and upload to S3.
     """
     # The format of the Hourly json dump files is YYYY-MM-DD-H.json.gz
-    date_hour = datetime.strftime(process_date, "%Y-%m-%d-%H")
+    # with Hour part without leading zero when single digit
+    date_hour = datetime.strftime(process_date, "%Y-%m-%d-%-H")
     data_filename = f"{date_hour}.json.gz"
     data_url = f"http://data.gharchive.org/{data_filename}"
-    s3_key = f"{s3_path}/{data_filename}"
+    s3_key = self._generate_sink_key(process_date,data_filename,s3_key_path)
     data = self.collect_data(data_url)
     self.upload_to_s3(data,s3_bucket,s3_key)
   
@@ -85,6 +86,22 @@ class DataLakeIngester:
       credentials["endpoint_url"] = self.config.get('aws', 's3_endpoint_url')
     return credentials
   
+
+
+  def _generate_sink_key(self, process_date: datetime, filename, sink_key_path) -> str:
+    """
+    Generate the S3 sink key for the sink file.
+    
+    :param process_date: the process date for the current batch.
+    :param filename: source filename.
+    :param sink_key_path: Key path within the S3 bucket.
+    :return: The key portion for the S3 sink path
+    """   
+    date_partition = datetime.strftime(process_date, "%Y-%m-%d")
+    hour_partition = datetime.strftime(process_date, "%H")
+    s3_key = f"{sink_key_path}/{date_partition}/{hour_partition}/{filename}"   
+    return s3_key 
+    
   # Define a callback function to print progress
   def _s3_progress_callback(self, bytes_transferred):
     """
