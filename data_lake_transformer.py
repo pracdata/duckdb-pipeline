@@ -10,13 +10,16 @@ class DataLakeTransformer:
   """
   A class for transforming and moving data between different stages of a data lake.
   """  
-  def __init__(self):
-    """ Initialize the DataLakeTransformer. """
+  def __init__(self,dataset_base_path):
+    """ 
+    Initialise the DataLakeTransformer. 
+    :param dataset_base_path: The key prefix to use for this dataset
+    """
     # set the logging level and format
     logging.basicConfig(level=logging.INFO, 
                         format='%(asctime)s - %(levelname)s - %(message)s')
+    self.dataset_base_path = dataset_base_path
     self.config = self._load_config()
-    
     self.con = self.duckdb_connection()
     self._set_duckdb_s3_credentials()
     logging.info("DuckDB connection initiated")
@@ -28,41 +31,37 @@ class DataLakeTransformer:
     con.load_extension("httpfs")
     return con
 
-  def serialise_raw_data(self, source_bucket, source_key_path, sink_bucket, sink_key_path, process_date: datetime) -> None:
+  def serialise_raw_data(self, process_date: datetime) -> None:
     """
     Serialize and clean raw data, then export to parquet format on next zone.
-
-    :param source_bucket: souce file S3 bucket.
-    :param source_key_path: Partial Key path within the S3 bucket.
-    :param sink_bucket: S3 bucket for the output.
-    :param sink_key_path: Partial Key path within the S3 bucket.
     :param process_date: the process date corresponding to the hourly partition to serialise
     """
     try:
-      source_path = self._raw_hourly_file_path(source_bucket, source_key_path, process_date)
+      source_bucket = self._datalake_bucket_name()['bronze']
+      sink_bucket = self._datalake_bucket_name()['silver']
+      source_path = self._raw_hourly_file_path(source_bucket, self.dataset_base_path, process_date)
       gharchive_raw_result = self.register_raw_gharchive(source_path)
       gharchive_clean_result = self.clean_raw_gharchive(gharchive_raw_result.alias)
-      sink_path = self._create_sink_path('clean', sink_bucket, sink_key_path, process_date, True)
+      sink_path = self._create_sink_path('clean', sink_bucket, self.dataset_base_path, process_date, True)
       logging.info(f"DuckDB - serialise and export cleaned data to {sink_path}")
       gharchive_clean_result.write_parquet(sink_path)
     except Exception as e:
       logging.error(f"Error in serialise_raw_data: {str(e)}")
       raise
   
-  def aggregate_silver_data(self, source_bucket, source_key_path, sink_bucket, sink_key_path, process_date: datetime) -> None:
+  def aggregate_silver_data(self, process_date: datetime) -> None:
     """
     Aggregate raw data and export to parquet format.
-
-    :param source_bucket: souce file S3 bucket.
-    :param sink_bucket: S3 bucket for the output.
-    :param sink_key_path: Key path within the S3 bucket.
+ 
     :param process_date: the process date corresponding to the daily partition to aggregate
     """
     try:
-      source_path = self._silver_daily_file_path(source_bucket, source_key_path, process_date)
+      source_bucket = self._datalake_bucket_name()['silver']
+      sink_bucket = self._datalake_bucket_name()['gold']
+      source_path = self._silver_daily_file_path(source_bucket, self.dataset_base_path, process_date)
       logging.info(f"DuckDB - aggregate silver data in {source_path}")
       gharchive_agg_result = self.aggregate_raw_gharchive(source_path)
-      sink_path = self._create_sink_path('agg', sink_bucket, sink_key_path, process_date)
+      sink_path = self._create_sink_path('agg', sink_bucket, self.dataset_base_path, process_date)
       logging.info(f"DuckDB - export aggregated data to {sink_path}")
       gharchive_agg_result.write_parquet(sink_path)   
     except Exception as e:
@@ -126,19 +125,19 @@ class DataLakeTransformer:
     self.con.execute(f"CREATE OR REPLACE TABLE gharchive_agg AS FROM ({query})")
     return self.con.table("gharchive_agg")
 
-  def _create_sink_path(self, data_type, sink_bucket, sink_key_path, process_date: datetime, has_hourly_partition: bool = False) -> str:
+  def _create_sink_path(self, data_type, sink_bucket, sink_base_path, process_date: datetime, has_hourly_partition: bool = False) -> str:
     """
     Create the full S3 path for the sink file.
 
     :param sink_bucket: S3 bucket for the output.
-    :param sink_key_path: Key path within the S3 bucket.
+    :param sink_base_path: Key path within the S3 bucket.
     :param data_type: Type of data being processed.
     :param process_date: the process date corresponding to the hourly partition
     :return: Full S3 path for the sink file.
     """
     partitions_path = self._partition_path(process_date,has_hourly_partition)
     sink_filename = self._generate_export_filename(data_type)
-    return f"s3://{sink_bucket}/{sink_key_path}/{partitions_path}/{sink_filename}"
+    return f"s3://{sink_bucket}/{sink_base_path}/{partitions_path}/{sink_filename}"
   
   def _extract_filename_from_s3_path(self, s3_path, remove_extension=False) -> str:
     """
@@ -162,14 +161,14 @@ class DataLakeTransformer:
     else:
       return full_filename
   
-  def _raw_hourly_file_path(self, source_bucket, source_key_path, process_date: datetime) -> str:
+  def _raw_hourly_file_path(self, source_bucket, source_base_path, process_date: datetime) -> str:
     partitions_path = self._partition_path(process_date,True)
-    s3_key = f"s3://{source_bucket}/{source_key_path}/{partitions_path}/*"   
+    s3_key = f"s3://{source_bucket}/{source_base_path}/{partitions_path}/*"   
     return s3_key 
 
-  def _silver_daily_file_path(self, source_bucket, source_key_path, process_date: datetime) -> str:
+  def _silver_daily_file_path(self, source_bucket, source_base_path, process_date: datetime) -> str:
     partitions_path = self._partition_path(process_date,False)
-    s3_key = f"s3://{source_bucket}/{source_key_path}/{partitions_path}/*/*.parquet"   
+    s3_key = f"s3://{source_bucket}/{source_base_path}/{partitions_path}/*/*.parquet"   
     return s3_key 
   
   def _partition_path(self,process_date: datetime, has_hourly_partition: bool = False):
@@ -202,7 +201,15 @@ class DataLakeTransformer:
     config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
     config.read(config_path)
     return config
-  
+
+  def _datalake_bucket_name(self) -> dict:
+    """ Get S3 bucket names from the config file"""
+    buckets = {}
+    buckets['bronze'] = self.config.get('datalake', 'bronze_bucket')
+    buckets['silver'] = self.config.get('datalake', 'silver_bucket')
+    buckets['gold'] = self.config.get('datalake', 'gold_bucket')
+    return buckets
+    
   def _set_duckdb_s3_credentials(self) -> None:
     """ Read S3 credentials and endpoint from config file """
     aws_access_key_id = self.config.get('aws', 's3_access_key_id')
