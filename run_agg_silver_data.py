@@ -12,10 +12,10 @@ def main():
     now = datetime.utcnow()
     # Calculate the process_date (2 hours before to ensure ingestion is run)
     process_date = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
-    transformer.serialise_raw_data(process_date)
-    logging.info(f"Successfully serialised raw data for {process_date}")
+    transformer.aggregate_silver_data(process_date)
+    logging.info(f"Successfully aggregated bronze data for {process_date}")
   except Exception as e:
-    logging.error(f"Error in serialise_raw_data: {str(e)}")
+    logging.error(f"Error in aggregate_silver_data: {str(e)}")
 
 if __name__ == "__main__":
   main()
