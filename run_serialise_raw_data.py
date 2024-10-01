@@ -11,7 +11,7 @@ def main():
     transformer = DataLakeTransformer(dataset_base_path='gharchive/events')
     now = datetime.utcnow()
     # Calculate the process_date (2 hours before to ensure ingestion is run)
-    process_date = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+    process_date = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
     transformer.serialise_raw_data(process_date)
     logging.info(f"Successfully serialised raw data for {process_date}")
   except Exception as e:

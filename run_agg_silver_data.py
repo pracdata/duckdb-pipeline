@@ -10,8 +10,8 @@ def main():
   try:
     transformer = DataLakeTransformer(dataset_base_path='gharchive/events')
     now = datetime.utcnow()
-    # Calculate the process_date (2 hours before to ensure ingestion is run)
-    process_date = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+    # Calculate the process_date for the previous day's data aggregation
+    process_date = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
     transformer.aggregate_silver_data(process_date)
     logging.info(f"Successfully aggregated bronze data for {process_date}")
   except Exception as e:
