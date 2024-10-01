@@ -1,11 +1,16 @@
+import sys
+import os
 import pytest
 import duckdb
-from data_lake_transformer import DataLakeTransformer
 import pandas as pd
+
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from data_lake_transformer import DataLakeTransformer
 
 @pytest.fixture
 def dl_transformer():
-  return DataLakeTransformer()
+  return DataLakeTransformer(dataset_base_path='gharchive/events')
 
 @pytest.fixture
 def mock_duckdb_connection():
@@ -40,7 +45,7 @@ def mock_s3_bronze_parquet_data(mock_duckdb_connection):
 
 def test_clean_raw_gharchive(mock_duckdb_connection, sample_raw_data, monkeypatch):
   # Create an instance of DataLakeTransformer
-  transformer = DataLakeTransformer()
+  transformer = DataLakeTransformer(dataset_base_path='gharchive/events')
   # Monkeypatch the duckdb connection to use our mock connection
   monkeypatch.setattr(transformer, 'con', mock_duckdb_connection)
   # Call the method we're testing
@@ -94,7 +99,7 @@ def test_extract_filename_from_s3_path(dl_transformer):
 
 def test_aggregate_raw_gharchive(mock_duckdb_connection, mock_s3_bronze_parquet_data, monkeypatch):
   # Create an instance of DataLakeTransformer
-  transformer = DataLakeTransformer()
+  transformer = DataLakeTransformer(dataset_base_path='gharchive/events')
   # Monkeypatch the duckdb connection to use our mock connection
   monkeypatch.setattr(transformer, 'con', mock_duckdb_connection)
   # Call the method to aggregate the data

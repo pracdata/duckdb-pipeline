@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-from data_lake_ingester import DataLakeIngester
-from datetime import datetime, timedelta
+import sys
+import os
 import logging
+from datetime import datetime, timedelta
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from data_lake_ingester import DataLakeIngester
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
