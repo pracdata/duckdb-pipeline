@@ -1,3 +1,8 @@
+# Using DuckDB for building data pipelines
+Build a simple data lake based on Medallion Archirecture, to incrementally ingest and process Github events.
+
+![DuckDB gharchive pipeline](https://github.com/user-attachments/assets/0b37081e-a786-4687-9a3f-99c768f963b1)
+
 
 ### Clone The Repository 
 ```bash
